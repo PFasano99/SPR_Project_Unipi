@@ -426,7 +426,7 @@ vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, v
 	auto compute_chunk = [&](pair<int, int> range) {   // function to compute a chunk
 		for (int i = range.first; i < range.second; i++) {
 			result.at(i) = f(input.at(i), kernelMatrix);
-			imwrite(to_string(i)+"a.jpg", result.at(i));
+			//imwrite(to_string(i)+"a.jpg", result.at(i));
 		}
 		return;
 	};
@@ -509,7 +509,7 @@ float parallelCompare(Mat base, Mat frameB, int nOfWorkers, function<void(Mat, M
 void openMpParallel(vector<Mat> frames, int nOfThreads) {
 
 	auto start = chrono::high_resolution_clock::now();
-	#pragma omp parallel num_threads(nOfThreads) 
+	#pragma omp parallel num_threads(nOfThreads) shared(frames)
 	{
 		#pragma omp for
 		for (int fID = 0; fID < frames.size(); fID++)
@@ -524,7 +524,7 @@ void openMpParallel(vector<Mat> frames, int nOfThreads) {
 
 	vector<vector<float>> kernelMatrix = generateKernel(5, 2, false);
 
-	#pragma omp parallel num_threads(nOfThreads) 
+	#pragma omp parallel num_threads(nOfThreads) shared(frames)
 	{
 		#pragma omp for
 		for (int fID = 0; fID < frames.size(); fID++)
