@@ -3,61 +3,82 @@
 #include <opencv2/imgcodecs.hpp>
 #include <opencv2/highgui/highgui.hpp>
 #include <vector>
+#include <atomic>
+#include <future>
+#include <thread>
+#include <chrono>
+#include <mutex>          // std::mutex
 
 using namespace cv;
 using namespace std;
 
 void devideVideoFrame(VideoCapture cap);
-vector<Mat> grayScale(vector<Mat> frames);
+Mat grayScale(Mat frames);
 vector<Mat> loadFrames(int framesID);
 float compareFrame(Mat frameA, Mat frameB, bool verbose);
-vector<Mat> gaussianFilter(vector<Mat> pics, int strideX, int strideY, int kernelSize, float sigma, bool verbose);
+Mat gaussianFilter(Mat pic, vector<vector<float>> kernelMatrix);
+vector<vector<float>> generateKernel(int kernelSize, float sigma, bool verbose);
+void sequential(vector<Mat> frames);
+
+void threadParalle(vector<Mat> frames, int nOfThreads);
+vector<Mat> map_gray(vector<Mat> input, int nOfWorkers, function<Mat(Mat)>f);
+vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, vector<vector<float>>));
+float parallelCompare(Mat base, Mat frameB, int nOfWorkers, function<void(Mat, Mat, bool, int, int, int, int, float&)>f);
+void compareFrame_Range(Mat frameA, Mat frameB, bool verbose, int startR, int startC, int endR, int endC, float &res);
+void ffParallel(vector<Mat> frames);
+
+
 
 const float PI = 3.14159265359;
 
 int main(int argc, char** argv)
 {
 	
+	auto loadTime = chrono::high_resolution_clock::now();
 	string videoPath = "E:\\Universit‡Magistrale\\secondoSemestre\\PDSProject\\SPR_Project_Unipi\\sample\\testFootage.mp4";
 	VideoCapture cap(videoPath);
-
-	//cout << cap.get(CAP_PROP_FRAME_COUNT) << endl;
 
 	if (!cap.isOpened()) {
 		cout << "Error opening video stream or file" << endl;
 		return -1;
 	}
 
+	devideVideoFrame(cap);	
+	vector<Mat> frames = loadFrames(cap.get(CAP_PROP_FRAME_COUNT));
+	
+
+	auto loadEnd = chrono::high_resolution_clock::now();
+	double load_time_taken = (chrono::duration_cast<chrono::nanoseconds>(loadEnd - loadTime).count())* 1e-9;
+	cout << "Loading Time: " << fixed << load_time_taken << setprecision(9) << " sec" << endl;
+
+	auto seqTime = chrono::high_resolution_clock::now();
+
+	sequential(frames);
+
+	auto seqTimeEnd = chrono::high_resolution_clock::now();
+	double whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(seqTimeEnd - seqTime).count())*1e-9;
+	cout << "Tot seq time: " << fixed << whole_time_taken+ load_time_taken << setprecision(9) << " sec" << endl;
+
 	devideVideoFrame(cap);
+	frames = loadFrames(cap.get(CAP_PROP_FRAME_COUNT));
+
+	auto threadTime = chrono::high_resolution_clock::now();
+
+	threadParalle(frames, 4);
+
+	auto threadTimeEnd = chrono::high_resolution_clock::now();
+	whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(threadTimeEnd - threadTime).count()) * 1e-9;
+	cout << "Tot thread time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
+
+	auto ffTime = chrono::high_resolution_clock::now();
+
+	ffParallel(frames);
+
+	auto ffTimeEnd = chrono::high_resolution_clock::now();
+	 whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(ffTimeEnd - ffTime).count()) * 1e-9;
+	cout << "Tot FastFlow time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
+
 	cap.release();
-	
-	vector<Mat> frames = loadFrames(175);	
-	frames = grayScale(frames);
-	//imwrite(("E:\\Universit‡Magistrale\\secondoSemestre\\PDSProject\\SPR_Project_Unipi\\sample\\befF.jpg"), frames.at(0));
-	
-	frames = gaussianFilter(frames, 3, 3, 5, 2,true);
-	//imwrite(("E:\\Universit‡Magistrale\\secondoSemestre\\PDSProject\\SPR_Project_Unipi\\sample\\afF.jpg"), frames.at(0));
-
-	cout << "0" << endl;
-	Mat base = frames.at(0).clone();
-	int totDifference = 0;
-	
-	for (int f = 0; f < frames.size(); f++) {
-		float difference = compareFrame(base, frames.at(f),false);
-		cout << difference << endl;
-		if (difference > 20) {
-			base = frames.at(f).clone();
-			totDifference++;
-		}
-			
-	}
-
-	
-	cout << "Motion detected in: " << totDifference<<" frames out of "<< frames.size() << endl;
-	
-	waitKey(0);
-
-	//destroyAllWindows();
 	return 0;
 }
 
@@ -95,50 +116,50 @@ vector<Mat> loadFrames(int framesID) {
 	return frames;
 }
 
-vector<Mat> gaussianFilter(vector<Mat> pics, int strideX, int strideY, int kernelSize, float sigma, bool verbose) {
-	
+
+vector<vector<float>> generateKernel(int kernelSize, float sigma, bool verbose) {
+	vector<vector<float>> kMatrix;
+
 	if (verbose)
 		cout << "starting kernel cal phase" << endl;
-	
+
 	if (kernelSize % 2 == 0)
 		kernelSize++;
 
-	vector<vector<float>> kernelMatrix;
 	int offset = kernelSize / 2;
 	for (int r = 0; r < kernelSize; r++) {
-		
+
 		vector<float> v1;
-		for(int c = 0; c < kernelSize; c++){					
-			float value = (1 / (2 * PI * powf(sigma, 2))) * (expf(-((powf(r-offset, 2) + powf(c - offset, 2)) / (2 * powf(sigma, 2)))));
-			v1.push_back(value);			
+		for (int c = 0; c < kernelSize; c++) {
+			float value = (1 / (2 * PI * powf(sigma, 2))) * (expf(-((powf(r - offset, 2) + powf(c - offset, 2)) / (2 * powf(sigma, 2)))));
+			v1.push_back(value);
 		}
-		kernelMatrix.push_back(v1);
-		
+		kMatrix.push_back(v1);
+
 	}
-	
+
 	if (verbose) {
 		for (int i = 0; i < kernelSize; i++) {
 			for (int j = 0; j < kernelSize; j++)
-				cout << kernelMatrix[i][j] << " ";
+				cout << kMatrix[i][j] << " ";
 			cout << endl;
 		}
 	}
 
-	if (verbose)
-		cout << "starting convolution phase" << endl;
+	return kMatrix;
+}
 
-	vector<Mat> output;
-	for (int fID = 0; fID < pics.size();fID++) {
-		Mat pic = pics.at(fID);
+Mat gaussianFilter(Mat pic, vector<vector<float>> kernelMatrix) {
+	
 		//convolution
-		for (int r = offset; r < pic.rows; r++) {
-			for (int c = offset; c < pic.cols; c++) {
-				if (c < pic.cols - kernelSize && r < pic.rows - kernelSize)
+		for (int r = 0; r < pic.rows; r++) {
+			for (int c = 0; c < pic.cols; c++) {
+				if (c < pic.cols - kernelMatrix.size() && r < pic.rows - kernelMatrix.size())
 				{
 					float newRGB = 0;
-					for (int rK = 0; rK < kernelSize; rK++) {
-						for (int cK = 0; cK < kernelSize; cK++) {
-
+					for (int rK = 0; rK < kernelMatrix.size(); rK++) {
+						for (int cK = 0; cK < kernelMatrix.size(); cK++) {
+							if((r + rK - 1)>0)
 							newRGB += pic.at<Vec3b>(r + rK - 1, c + cK - 1)[0] * kernelMatrix[rK][cK];
 						}
 					}
@@ -152,34 +173,26 @@ vector<Mat> gaussianFilter(vector<Mat> pics, int strideX, int strideY, int kerne
 
 			}
 		}
-
-		output.push_back(pic);
-	}
-	 
-	
-	return output;
+ 	
+	return pic;
 }
 
-vector<Mat> grayScale(vector<Mat> frames) {
 
-	vector<Mat> grayFrames;
-	for (int fID = 0; fID < frames.size(); fID++) {
-		Mat frame = frames.at(fID);
-		for (int r = 0; r < frame.rows; ++r) {
-			for (int c = 0; c < frame.cols; ++c) {
-				Vec3b pixel = frame.at<Vec3b>(r, c);
-				float av = pixel[0] + pixel[1] + pixel[2];
-				av /= 3;
-				pixel[0] = av;
-				pixel[1] = av;
-				pixel[2] = av;
-				frame.at<Vec3b>(r, c) = pixel;
-			}
+Mat grayScale(Mat frame) {
+
+	for (int r = 0; r < frame.rows; ++r) {
+		for (int c = 0; c < frame.cols; ++c) {
+			Vec3b pixel = frame.at<Vec3b>(r, c);
+			float av = pixel[0] + pixel[1] + pixel[2];
+			av /= 3;
+			pixel[0] = av;
+			pixel[1] = av;
+			pixel[2] = av;
+			frame.at<Vec3b>(r, c) = pixel;
 		}
-		grayFrames.push_back(frame);		
-	}
+	}	
 
-	return grayFrames;	
+	return frame;
 }
 
 
@@ -213,4 +226,223 @@ float compareFrame(Mat frameA, Mat frameB, bool verbose) {
 	
 	int nPixel = frameA.rows * frameA.cols;
 	return (differencePercentage/nPixel)*100;
+}
+
+void compareFrame_Range(Mat frameA, Mat frameB, bool verbose, int startR, int startC, int endR, int endC,float &res) {
+	
+	if (endR > frameA.rows)
+		endR = frameA.rows;
+
+	if (endC > frameA.cols)
+		endC = frameA.cols;
+
+	float differencePercentage = 0;
+	destroyAllWindows();
+	Mat cpya = frameB.clone();
+	for (int r = startR; r < endR; ++r) {
+		for (int c = startC; c < endC; ++c) {
+			Vec3b pixelA = frameA.at<Vec3b>(r, c);
+			Vec3b pixelB = frameB.at<Vec3b>(r, c);
+			if (pixelA[0] > pixelB[0] + 7 || pixelA[0] < pixelB[0] - 7)
+			{
+				differencePercentage++;
+				if (verbose) {
+					cpya.at<Vec3b>(r, c)[0] = 0;
+					cpya.at<Vec3b>(r, c)[1] = 0;
+					cpya.at<Vec3b>(r, c)[2] = 255;
+				}
+			}
+
+		}
+	}
+
+	if (verbose) {
+
+		imshow("aaa", cpya);
+		//cpya.release();	
+		waitKey(0);
+	}
+
+	int nPixel = frameA.rows * frameA.cols;
+
+	mutex mtx;
+	mtx.lock();
+	res = (differencePercentage / nPixel) * 100;
+	mtx.unlock();
+}
+
+
+void sequential(vector<Mat> frames) {
+
+	auto start = chrono::high_resolution_clock::now();
+
+	for (int fID = 0; fID < frames.size(); fID++)
+		frames.at(fID) = grayScale(frames.at(fID));
+
+	auto end = chrono::high_resolution_clock::now();
+	double time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Grayscale time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+
+	start = chrono::high_resolution_clock::now();
+
+	vector<vector<float>> kernelMatrix = generateKernel(5, 2, false);
+	for (int fID = 0; fID < frames.size(); fID++)
+		frames.at(fID) = gaussianFilter(frames.at(fID), kernelMatrix);
+
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "GaussianFilter time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+
+	start = chrono::high_resolution_clock::now();
+
+	//cout << "0" << endl;
+	Mat base = frames.at(0).clone();
+	int totDifference = 0;
+
+	for (int f = 0; f < frames.size(); f++) {
+		float difference = compareFrame(base, frames.at(f), false);
+		//cout << difference << endl;
+		if (difference > 20) {
+			base = frames.at(f).clone();
+			totDifference++;
+		}
+
+	}
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Comparison time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+	cout << "Motion detected in: " << totDifference << " frames out of " << frames.size() << endl;
+
+}
+
+
+void threadParalle(vector<Mat> frames, int nOfThreads) {
+	auto start = chrono::high_resolution_clock::now();
+	map_gray(frames, nOfThreads, &grayScale);
+	auto end = chrono::high_resolution_clock::now();
+	double time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Grayscale time threads: " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+	start = chrono::high_resolution_clock::now();
+	map_gaussianFilter(frames, nOfThreads, &gaussianFilter);
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Gaussian threads : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+	start = chrono::high_resolution_clock::now();
+
+	//cout << "0" << endl;
+	Mat base = frames.at(0).clone();
+	int totDifference = 0;
+
+	for (int f = 0; f < frames.size(); f++) {
+		float difference = parallelCompare(base, frames.at(f), nOfThreads, &compareFrame_Range);
+		if (difference > 20) {
+			base = frames.at(f).clone();
+			totDifference++;
+		}		
+	}
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Comparison time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+	cout << "Motion detected in: " << totDifference << " frames out of " << frames.size() << endl;
+}
+
+void ffParallel(vector<Mat> frames) {
+
+}
+
+
+vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, vector<vector<float>>)) {
+
+	vector<Mat> result(input.size());
+	vector<thread*> threads;
+	int nextSlice = input.size() / nOfWorkers;
+	int start = 0;
+	int end = 0;
+
+	vector<vector<float>> kernelMatrix = generateKernel(5, 2, false);
+
+	auto compute_chunk = [&](pair<int, int> range) {   // function to compute a chunk
+		for (int i = range.first; i < range.second; i++) {
+			result.at(i) = f(input.at(i), kernelMatrix);
+			imwrite(to_string(i)+"a.jpg", result.at(i));
+		}
+		return;
+	};
+
+	vector<pair<int, int>> ranges(nextSlice);                     // vector to compute the ranges 
+	int delta{ (int)input.size() / nextSlice };
+
+	for (int i = 0; i < nextSlice; i++) {                     // split the string into pieces
+		ranges[i] = make_pair(i * delta, (i != (nextSlice - 1) ? (i + 1) * delta : input.size()));
+		threads.push_back(new thread(compute_chunk, ranges[i]));
+	}
+
+	for (int i = 0; i < threads.size(); ++i)
+	{
+		threads[i]->join();
+	}
+
+	return result;
+}
+
+vector<Mat> map_gray(vector<Mat> input, int nOfWorkers, function<Mat(Mat)>f) {
+
+	vector<Mat> result(input.size());
+	vector<thread*> threads;
+	int nextSlice = input.size() / nOfWorkers;
+	int start = 0;
+	int end = 0;
+
+	auto compute_chunk = [&](pair<int, int> range) {   // function to compute a chunk
+		for (int i = range.first; i < range.second; i++) {
+			result.at(i) = f(input.at(i));
+			//imwrite(to_string(i)+"a.jpg", result.at(i));
+		}
+		return;
+	};
+
+	vector<pair<int, int>> ranges(nextSlice);                     // vector to compute the ranges 
+	int delta{ (int)input.size() / nextSlice };
+
+	for (int i = 0; i < nextSlice; i++) {                     // split the string into pieces
+		ranges[i] = make_pair(i * delta, (i != (nextSlice - 1) ? (i + 1) * delta : input.size()));
+	}
+
+	for (int i = 0; i < nextSlice; i++) {                     // assign chuncks to threads
+		threads.push_back(new thread(compute_chunk, ranges[i]));
+	}
+
+	for (int i = 0; i < threads.size(); ++i)
+	{
+		//cout << "joined thread " << threads[i]->get_id() << endl;
+		threads[i]->join();
+	}
+
+	return result;
+}
+
+float parallelCompare(Mat base, Mat frameB, int nOfWorkers, function<void(Mat, Mat, bool, int, int, int, int, float&)>f){
+
+	vector<thread*> threads;
+	int rowsS = base.rows / (nOfWorkers/2);
+
+	float precision = 0;
+
+	for (int t = 0; t < nOfWorkers; t++) {
+
+		//threads.push_back(move(new thread(([=](){f(base, frameB, false, rowsS * t, 0, rowsS * 2, base.cols, precision);}))));
+		threads.push_back(new thread(f,base, frameB, false, rowsS * t, 0, rowsS * 2 -1, base.cols-1, ref(precision)));
+
+	}
+	for (int i = 0; i < threads.size(); ++i)
+	{
+		// cout<<"joined thread "<<threads[i]->get_id()<<endl;
+		threads[i]->join();
+	}
+
+	return precision;
 }
