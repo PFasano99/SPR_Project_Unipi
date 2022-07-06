@@ -7,7 +7,9 @@
 #include <future>
 #include <thread>
 #include <chrono>
-#include <mutex>          // std::mutex
+#include <mutex>    
+#include <omp.h>
+
 
 using namespace cv;
 using namespace std;
@@ -25,7 +27,8 @@ vector<Mat> map_gray(vector<Mat> input, int nOfWorkers, function<Mat(Mat)>f);
 vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, vector<vector<float>>));
 float parallelCompare(Mat base, Mat frameB, int nOfWorkers, function<void(Mat, Mat, bool, int, int, int, int, float&)>f);
 void compareFrame_Range(Mat frameA, Mat frameB, bool verbose, int startR, int startC, int endR, int endC, float &res);
-void ffParallel(vector<Mat> frames);
+void ffParallel(vector<Mat> frames, int nOfWorkers);
+void openMpParallel(vector<Mat> frames, int nOfThreads);
 
 
 
@@ -61,6 +64,7 @@ int main(int argc, char** argv)
 
 	devideVideoFrame(cap);
 	frames = loadFrames(cap.get(CAP_PROP_FRAME_COUNT));
+	cout << endl;
 
 	auto threadTime = chrono::high_resolution_clock::now();
 
@@ -69,14 +73,24 @@ int main(int argc, char** argv)
 	auto threadTimeEnd = chrono::high_resolution_clock::now();
 	whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(threadTimeEnd - threadTime).count()) * 1e-9;
 	cout << "Tot thread time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
+	cout << endl;
 
 	auto ffTime = chrono::high_resolution_clock::now();
 
-	ffParallel(frames);
+	ffParallel(frames,4);
 
 	auto ffTimeEnd = chrono::high_resolution_clock::now();
 	 whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(ffTimeEnd - ffTime).count()) * 1e-9;
 	cout << "Tot FastFlow time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
+
+	cout << endl;
+	auto ompTime = chrono::high_resolution_clock::now();
+
+	openMpParallel(frames, 4);
+
+	auto ompTimeEnd = chrono::high_resolution_clock::now();
+	whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(ompTimeEnd - ompTime).count()) * 1e-9;
+	cout << "Tot OpenMp time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
 
 	cap.release();
 	return 0;
@@ -350,7 +364,51 @@ void threadParalle(vector<Mat> frames, int nOfThreads) {
 	cout << "Motion detected in: " << totDifference << " frames out of " << frames.size() << endl;
 }
 
-void ffParallel(vector<Mat> frames) {
+void ffParallel(vector<Mat> frames, int nOfThreads) {
+
+	auto start = chrono::high_resolution_clock::now();
+
+	//ParallelFor pf;
+	//pf.parallel_for(0, frames.size(), 1, 0, [&](const long fID) {
+	//	frames.at(fID) = grayScale(frames.at(fID));
+	//	},nOfThreads);
+
+	auto end = chrono::high_resolution_clock::now();
+	double time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Grayscale time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+
+	start = chrono::high_resolution_clock::now();
+
+	vector<vector<float>> kernelMatrix = generateKernel(5, 2, false);
+	//pf.parallel_for(0, frames.size(), 1, 0, [&](const long fID) {
+	//	frames.at(fID) = gaussianFilter(frames.at(fID), kernelMatrix);
+	//	}, nOfThreads);		
+
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "GaussianFilter time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+
+	start = chrono::high_resolution_clock::now();
+
+	//cout << "0" << endl;
+	Mat base = frames.at(0).clone();
+	int totDifference = 0;
+
+	for (int f = 0; f < frames.size(); f++) {
+		float difference = compareFrame(base, frames.at(f), false);
+		//cout << difference << endl;
+		if (difference > 20) {
+			base = frames.at(f).clone();
+			totDifference++;
+		}
+
+	}
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Comparison time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+	cout << "Motion detected in: " << totDifference << " frames out of " << frames.size() << endl;
 
 }
 
@@ -445,4 +503,56 @@ float parallelCompare(Mat base, Mat frameB, int nOfWorkers, function<void(Mat, M
 	}
 
 	return precision;
+}
+
+
+void openMpParallel(vector<Mat> frames, int nOfThreads) {
+
+	auto start = chrono::high_resolution_clock::now();
+	#pragma omp parallel num_threads(nOfThreads) 
+	{
+		#pragma omp for
+		for (int fID = 0; fID < frames.size(); fID++)
+			frames.at(fID) = grayScale(frames.at(fID));
+	}
+	auto end = chrono::high_resolution_clock::now();
+	double time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Grayscale time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+
+	start = chrono::high_resolution_clock::now();
+
+	vector<vector<float>> kernelMatrix = generateKernel(5, 2, false);
+
+	#pragma omp parallel num_threads(nOfThreads) 
+	{
+		#pragma omp for
+		for (int fID = 0; fID < frames.size(); fID++)
+			frames.at(fID) = gaussianFilter(frames.at(fID), kernelMatrix);
+	}
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "GaussianFilter time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+
+
+	start = chrono::high_resolution_clock::now();
+
+	//cout << "0" << endl;
+	Mat base = frames.at(0).clone();
+	int totDifference = 0;
+
+	for (int f = 0; f < frames.size(); f++) {
+		float difference = compareFrame(base, frames.at(f), false);
+		//cout << difference << endl;
+		if (difference > 20) {
+			base = frames.at(f).clone();
+			totDifference++;
+		}
+
+	}
+	end = chrono::high_resolution_clock::now();
+	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
+	cout << "Comparison time : " << fixed << time_taken << setprecision(9) << " sec" << endl;
+	cout << "Motion detected in: " << totDifference << " frames out of " << frames.size() << endl;
+
 }
