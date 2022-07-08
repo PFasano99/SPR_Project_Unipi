@@ -52,7 +52,7 @@ int main(int argc, char** argv)
 	auto loadEnd = chrono::high_resolution_clock::now();
 	double load_time_taken = (chrono::duration_cast<chrono::nanoseconds>(loadEnd - loadTime).count())* 1e-9;
 	
-	cout<<"## Sequential"<<endl;
+	cout<<"## Sequential "<<endl<<endl;;
 	cout << "- Loading video Time: " << fixed << load_time_taken << setprecision(9) << " sec" << endl;
 	auto seqTime = chrono::high_resolution_clock::now();
 	sequential(seqFrames);
@@ -455,7 +455,7 @@ vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, v
 
 	vector<Mat> result(input.size());
 	vector<thread*> threads;
-	int nextSlice = input.size() / nOfWorkers;
+	int delta = input.size() / nOfWorkers;
 	int start = 0;
 	int end = 0;
 
@@ -469,18 +469,15 @@ vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, v
 		return;
 	};
 
-	vector<pair<int, int>> ranges(nextSlice);                     // vector to compute the ranges 
-	int delta{ (int)input.size() / nextSlice };
-
-	for (int i = 0; i < nextSlice; i++) {                     // split the string into pieces
-		ranges[i] = make_pair(i * delta, (i != (nextSlice - 1) ? (i + 1) * delta : input.size()));
+	vector<pair<int, int>> ranges(nOfWorkers);                     
+	for (int i = 0; i < nOfWorkers; i++)                      
+		ranges[i] = make_pair(i * delta, (i != (nOfWorkers - 1) ? (i + 1) * delta : input.size()));
+	for (int i = 0; i < nOfWorkers; i++)
 		threads.push_back(new thread(compute_chunk, ranges[i]));
-	}
+	
 
 	for (int i = 0; i < threads.size(); ++i)
-	{
 		threads[i]->join();
-	}
 
 	return result;
 }
@@ -489,7 +486,7 @@ vector<Mat> map_gray(vector<Mat> input, int nOfWorkers, function<Mat(Mat)>f) {
 
 	vector<Mat> result(input.size());
 	vector<thread*> threads;
-	int nextSlice = input.size() / nOfWorkers;
+	int delta = input.size() / nOfWorkers;
 	int start = 0;
 	int end = 0;
 
@@ -501,22 +498,19 @@ vector<Mat> map_gray(vector<Mat> input, int nOfWorkers, function<Mat(Mat)>f) {
 		return;
 	};
 
-	vector<pair<int, int>> ranges(nextSlice);                     // vector to compute the ranges 
-	int delta{ (int)input.size() / nextSlice };
-
-	for (int i = 0; i < nextSlice; i++) {                     // split the string into pieces
-		ranges[i] = make_pair(i * delta, (i != (nextSlice - 1) ? (i + 1) * delta : input.size()));
-	}
-
-	for (int i = 0; i < nextSlice; i++) {                     // assign chuncks to threads
+	vector<pair<int, int>> ranges(nOfWorkers);                      
+	
+	for (int i = 0; i < nOfWorkers; i++)                  
+		ranges[i] = make_pair(i * delta, (i != (nOfWorkers - 1) ? (i + 1) * delta : input.size()));
+	
+	for (int i = 0; i < nOfWorkers; i++)                     
 		threads.push_back(new thread(compute_chunk, ranges[i]));
-	}
+	
 
 	for (int i = 0; i < threads.size(); ++i)
-	{
 		//cout << "joined thread " << threads[i]->get_id() << endl;
 		threads[i]->join();
-	}
+	
 
 	return result;
 }
@@ -600,25 +594,24 @@ tuple<vector<double>, vector<double>, vector<double>, vector<double>> statistics
 	vector<double> idealTime;
 
 	//we assume that in the index 0 of Tpar we find the paralellization done with 1 thread
-
-	for (int i = 1; i < n.size(); i++) {
-		
-		speedup.at(i) = Tseq / Tpar.at(i);
-		scalab.at(i) = Tpar.at(0) / Tpar.at(i);
-		efficency.at(i) = speedup.at(i) / n.at(i);
-		idealTime.at(i) = Tseq / n.at(i);
-
-		if (verbose) {
-			cout << "## With " << n.at(i) << " threads:" << endl;
-			cout << "- Speedup is " << speedup.at(i) << endl;
-			cout << "- Scalb is " << scalab.at(i) << endl;
-			cout << "- Efficency is " << efficency.at(i) << endl;
-			cout << "- Ideal time is " << efficency.at(i) << endl;
-			cout << endl;
-		}
-
+	for (int i = 0; i < n.size(); i++) {	
+		speedup.push_back(Tseq / Tpar.at(i));
+		scalab.push_back(Tpar.at(0) / Tpar.at(i));
+		efficency.push_back(speedup.back() / n.at(i));
+		idealTime.push_back(Tseq / n.at(i));
 	}
 
+
+	if (verbose) {
+		for (int i = 0; i < n.size(); i++) {			
+				cout << "## With " << n.at(i) << " threads:" << endl;
+				cout << "- Speedup is " << speedup.at(i) << endl;
+				cout << "- Scalb is " << scalab.at(i) << endl;
+				cout << "- Efficency is " << efficency.at(i) << endl;
+				cout << "- Ideal time is " << idealTime.at(i) << endl;
+				cout << endl;
+		}
+	}
 
 
 	return make_tuple(speedup,scalab,efficency,idealTime);
