@@ -7,21 +7,25 @@
 #include <chrono>
 #include <mutex>    
 #include <omp.h>
-#include <ff/ff.hpp>
-#include <ff/parallel_for.hpp>
+//#include <ff/ff.hpp>
+//#include <ff/parallel_for.hpp>
 //export PATH=/usr/local/gcc-11.1/bin/:$PATH
 //export LD_LIBRARY_PATH=/usr/local/gcc-11.1/lib64/:$LD_LIBRARY_PATH
 
 using namespace cv;
 using namespace std;
-using namespace ff;
+//using namespace ff;
 
-vector<Mat> devideVideoFrame(string videoPath);
-Mat grayScale(Mat frames);
+void devideVideoFrame(VideoCapture cap);
+vector<Mat> loadVideo(string videoPath);
 vector<Mat> loadFrames(int framesID);
-float compareFrame(Mat frameA, Mat frameB, bool verbose);
-Mat gaussianFilter(Mat pic, vector<vector<float>> kernelMatrix);
+
+Mat grayScale(Mat frames);
 vector<vector<float>> generateKernel(int kernelSize, float sigma, bool verbose);
+Mat gaussianFilter(Mat pic, vector<vector<float>> kernelMatrix);
+float compareFrame(Mat frameA, Mat frameB, bool verbose);
+
+
 void sequential(vector<Mat> frames);
 
 void threadParalle(vector<Mat> frames, int nOfThreads);
@@ -29,7 +33,9 @@ vector<Mat> map_gray(vector<Mat> input, int nOfWorkers, function<Mat(Mat)>f);
 vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, vector<vector<float>>));
 float parallelCompare(Mat base, Mat frameB, int nOfWorkers, function<void(Mat, Mat, bool, int, int, int, int, float&)>f);
 void compareFrame_Range(Mat frameA, Mat frameB, bool verbose, int startR, int startC, int endR, int endC, float &res);
+
 void ffParallel(vector<Mat> frames, int nOfWorkers);
+
 void openMpParallel(vector<Mat> frames, int nOfThreads);
 
 
@@ -38,76 +44,97 @@ const float PI = 3.14159265359;
 
 int main(int argc, char** argv)
 {	
+	string videoPath = "../sample/testFootage_1.mp4";//argv[1];
 	cout<<"strating"<<endl;
-	auto loadTime = chrono::high_resolution_clock::now();
-	string videoPath = argv[1];
 
-	vector<Mat> frames = devideVideoFrame(videoPath); // loadFrames(cap.get(CAP_PROP_FRAME_COUNT));
+	auto loadTime = chrono::high_resolution_clock::now();
+	/*
+	VideoCapture cap(videoPath);
+	if (!cap.isOpened()) {
+		cout << "Error opening video stream or file" << endl;
+		return -1;
+	}
+
+	devideVideoFrame(cap);
+	vector<Mat> frames = loadFrames(cap.get(CAP_PROP_FRAME_COUNT));
+	*/
+	vector<Mat> seqFrames = loadVideo(videoPath);
 	auto loadEnd = chrono::high_resolution_clock::now();
 	double load_time_taken = (chrono::duration_cast<chrono::nanoseconds>(loadEnd - loadTime).count())* 1e-9;
 	cout << "- Loading video Time: " << fixed << load_time_taken << setprecision(9) << " sec" << endl;
+	
 
 	cout<<"## Sequential"<<endl;
 	auto seqTime = chrono::high_resolution_clock::now();
-
-	sequential(frames);
-
+	sequential(seqFrames);
 	auto seqTimeEnd = chrono::high_resolution_clock::now();
 	double whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(seqTimeEnd - seqTime).count())*1e-9;
 	cout << "Tot seq time: " << fixed << whole_time_taken+ load_time_taken << setprecision(9) << " sec" << endl;
 	
 	// loadFrames(cap.get(CAP_PROP_FRAME_COUNT));
 	cout << endl;
+	seqFrames.clear();
 
 	for(int th = 4; th<=32; th*=2)
 	{
 		cout<<"# Number of threads "<<th<<endl;
 		cout<<"-------------------------------------------------------"<<endl;
-		cout<<"## Threads"<<endl;
+			
+		cout<<"## Threads"<<endl;	
+
+		loadTime = chrono::high_resolution_clock::now();
+		vector<Mat> thFrames = loadVideo(videoPath);
+		loadEnd = chrono::high_resolution_clock::now();
+		load_time_taken = (chrono::duration_cast<chrono::nanoseconds>(loadEnd - loadTime).count()) * 1e-9;
+		cout << "- Loading video Time: " << fixed << load_time_taken << setprecision(9) << " sec" << endl;
 		
+
 		auto threadTime = chrono::high_resolution_clock::now();
-
-		threadParalle(frames, th);
-
+		threadParalle(thFrames, th);
 		auto threadTimeEnd = chrono::high_resolution_clock::now();
 		whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(threadTimeEnd - threadTime).count()) * 1e-9;
 		cout << "- Tot thread time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
 		cout << endl;
+		thFrames.clear();
+		
+		/*
 		cout<<"## Fast Flow"<<endl;
+		loadTime = chrono::high_resolution_clock::now();
+		vector<Mat> ffFrames = loadVideo(videoPath);
+		loadEnd = chrono::high_resolution_clock::now();
+		load_time_taken = (chrono::duration_cast<chrono::nanoseconds>(loadEnd - loadTime).count()) * 1e-9;
+		cout << "- Loading video Time: " << fixed << load_time_taken << setprecision(9) << " sec" << endl;
 
 		auto ffTime = chrono::high_resolution_clock::now();
-
-		ffParallel(frames,th);
-
+		//ffParallel(ffFrames,th);
 		auto ffTimeEnd = chrono::high_resolution_clock::now();
 		whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(ffTimeEnd - ffTime).count()) * 1e-9;
 		cout << "- Tot FastFlow time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
 		cout << endl;
+		ffFrames.clear();
+		*/
 
 		cout<<"## OpenMP"<<endl;
+		loadTime = chrono::high_resolution_clock::now();
+		vector<Mat> ompFrames = loadVideo(videoPath);
+		loadEnd = chrono::high_resolution_clock::now();
+		load_time_taken = (chrono::duration_cast<chrono::nanoseconds>(loadEnd - loadTime).count()) * 1e-9;
+		cout << "- Loading video Time: " << fixed << load_time_taken << setprecision(9) << " sec" << endl;
+
 		auto ompTime = chrono::high_resolution_clock::now();
-
-		openMpParallel(frames, th);
-
+		openMpParallel(ompFrames, th);
 		auto ompTimeEnd = chrono::high_resolution_clock::now();
 		whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(ompTimeEnd - ompTime).count()) * 1e-9;
 		cout << "- Tot OpenMp time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
+		ompFrames.clear();
 
 		cout<<"----------------------------------------------------------------"<<endl<<endl;
 	}
 	return 0;
 }
 
-vector<Mat> devideVideoFrame(string videoPath){
-	
-	VideoCapture cap(videoPath);
-	vector<Mat> frames;
-	if (!cap.isOpened()) {
-		cout << "Error opening video stream or file" << endl;
-		return frames;
-	}
-	
-	
+void devideVideoFrame(VideoCapture cap){
+
 	int fID = 0;
 	bool control = true;
 	while (control) {
@@ -117,9 +144,9 @@ vector<Mat> devideVideoFrame(string videoPath){
 		if (frame.empty())
 			break;
 
-		//string filename = to_string(fID) + ".jpg";
-		//imwrite(("./sample/"+ filename), frame);
-		frames.push_back(frame);
+		string filename = to_string(fID) + ".jpg";
+		imwrite(("../sample/"+ filename), frame);
+		
 		char c = (char)waitKey(25);
 
 		if (c == 27)
@@ -128,7 +155,6 @@ vector<Mat> devideVideoFrame(string videoPath){
 
 	}
 
-	return frames;
 }
 
 vector<Mat> loadFrames(int framesID) {
@@ -136,10 +162,41 @@ vector<Mat> loadFrames(int framesID) {
 
 	for (int i = 0; i < framesID; i++) {
 		string filename = to_string(i) + ".jpg";
-		frames.push_back( imread("./sample/" + filename ));
+		frames.push_back( imread("../sample/" + filename ));
 	}
 	
 	return frames;
+}
+
+vector<Mat> loadVideo(string videoPath) {
+
+	vector<Mat> videoFrames;
+	VideoCapture cap(videoPath);
+	if (!cap.isOpened()) {
+		cout << "Error opening video stream or file" << endl;
+		return videoFrames;
+	}
+
+	int o = 0;
+	bool control = true;
+	while (control) {
+		Mat frame;
+		cap >> frame;
+
+		if (frame.empty())
+			break;
+
+		videoFrames.push_back(frame);
+
+		char c = (char)waitKey(25);
+
+		if (c == 27)
+			control = false;
+		cout << "pic: " << o << " out of: " << cap.get(CAP_PROP_FRAME_COUNT) << " \b" << '\r' << flush;
+		o++;
+	}
+
+	return videoFrames;
 }
 
 
@@ -225,7 +282,7 @@ Mat grayScale(Mat frame) {
 
 float compareFrame(Mat frameA, Mat frameB, bool verbose) {
 	float differencePercentage = 0;
-	destroyAllWindows();
+	
 	Mat cpya = frameB.clone();
 	for (int r = 0; r < frameA.rows; ++r) {
 		for (int c = 0; c < frameA.cols; ++c) {
@@ -324,7 +381,6 @@ void sequential(vector<Mat> frames) {
 
 	start = chrono::high_resolution_clock::now();
 
-	//cout << "0" << endl;
 	Mat base = frames.at(0).clone();
 	int totDifference = 0;
 
@@ -365,7 +421,7 @@ void threadParalle(vector<Mat> frames, int nOfThreads) {
 	int totDifference = 0;
 	
 	for (int f = 0; f < frames.size(); f++) {
-		float difference = compareFrame(base, frames.at(f),false);// parallelCompare(base, frames.at(f), nOfThreads, &compareFrame_Range);
+		float difference = compareFrame(base, frames.at(f), false);// parallelCompare(base, frames.at(f), nOfThreads, &compareFrame_Range);
 		if (difference > 20) {
 			base = frames.at(f).clone();
 			totDifference++;
@@ -381,10 +437,10 @@ void ffParallel(vector<Mat> frames, int nOfThreads) {
 
 	auto start = chrono::high_resolution_clock::now();
 
-	ParallelFor pf;
-	pf.parallel_for(0, frames.size(), 1, 0, [&](const long fID) {
-		frames.at(fID) = grayScale(frames.at(fID));
-	},nOfThreads);
+	//ParallelFor pf;
+	//pf.parallel_for(0, frames.size(), 1, 0, [&](const long fID) {
+	//	frames.at(fID) = grayScale(frames.at(fID));
+	//},nOfThreads);
 
 	auto end = chrono::high_resolution_clock::now();
 	double time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
@@ -394,9 +450,9 @@ void ffParallel(vector<Mat> frames, int nOfThreads) {
 	start = chrono::high_resolution_clock::now();
 
 	vector<vector<float>> kernelMatrix = generateKernel(5, 2, false);
-	pf.parallel_for(0, frames.size(), 1, 0, [&](const long fID) {
-		frames.at(fID) = gaussianFilter(frames.at(fID), kernelMatrix);
-		}, nOfThreads);		
+	//pf.parallel_for(0, frames.size(), 1, 0, [&](const long fID) {
+	//	frames.at(fID) = gaussianFilter(frames.at(fID), kernelMatrix);
+	//	}, nOfThreads);		
 
 	end = chrono::high_resolution_clock::now();
 	time_taken = (chrono::duration_cast<chrono::nanoseconds>(end - start).count()) * 1e-9;
@@ -405,7 +461,6 @@ void ffParallel(vector<Mat> frames, int nOfThreads) {
 
 	start = chrono::high_resolution_clock::now();
 
-	//cout << "0" << endl;
 	Mat base = frames.at(0).clone();
 	int totDifference = 0;
 
@@ -439,7 +494,7 @@ vector<Mat> map_gaussianFilter(vector<Mat> input, int nOfWorkers, Mat(*f)(Mat, v
 	auto compute_chunk = [&](pair<int, int> range) {   // function to compute a chunk
 		for (int i = range.first; i < range.second; i++) {
 			result.at(i) = f(input.at(i), kernelMatrix);
-			//imwrite(to_string(i)+"a.jpg", result.at(i));
+			//imwrite("../sample/" + to_string(nOfWorkers)+"_"+to_string(i) + "a.jpg", result.at(i));
 		}
 		return;
 	};
@@ -471,7 +526,7 @@ vector<Mat> map_gray(vector<Mat> input, int nOfWorkers, function<Mat(Mat)>f) {
 	auto compute_chunk = [&](pair<int, int> range) {   // function to compute a chunk
 		for (int i = range.first; i < range.second; i++) {
 			result.at(i) = f(input.at(i));
-			//imwrite(to_string(i)+"a.jpg", result.at(i));
+			//imwrite("../smaple/"+to_string(nOfWorkers) + "_" + to_string(i) + "a.jpg", result.at(i));
 		}
 		return;
 	};
@@ -550,7 +605,6 @@ void openMpParallel(vector<Mat> frames, int nOfThreads) {
 
 	start = chrono::high_resolution_clock::now();
 
-	//cout << "0" << endl;
 	Mat base = frames.at(0).clone();
 	int totDifference = 0;
 

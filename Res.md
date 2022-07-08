@@ -103,3 +103,98 @@ Tot seq time: 22.368641574 sec
 - Motion detected in: 11 frames out of 175
 - Tot OpenMp time: 8.686715359 sec
 ----------------------------------------------------------------
+
+
+<br>
+<br>
+
+
+
+strating
+- Loading video Time: 174.579138 sec
+## Sequential
+- Grayscale time : 35.073754800 sec
+- GaussianFilter time : 105.507554000 sec
+- Comparison time : 6.581845300 sec
+- Motion detected in: 102 frames out of 3600
+Tot seq time: 321.879485900 sec
+
+# Number of threads 4
+-------------------------------------------------------
+## Threads
+- Grayscale time threads: 3.140986900 sec
+- Gaussian threads : 29.228533900 sec
+- Comparison time : 6.138433300 sec
+- Motion detected in: 66 frames out of 3600
+- Tot thread time: 213.091844700 sec
+
+## Fast Flow
+- Tot FastFlow time: 174.579138100 sec
+
+## OpenMP
+- Grayscale time : 2.196370300 sec
+- GaussianFilter time : 35.529179100 sec
+- Comparison time : 5.294309800 sec
+- Motion detected in: 38 frames out of 3600
+- Tot OpenMp time: 217.605152800 sec
+----------------------------------------------------------------
+
+# Number of threads 8
+-------------------------------------------------------
+## Threads
+- Grayscale time threads: 2.403906700 sec
+- Gaussian threads : 29.669899200 sec
+- Comparison time : 6.306190200 sec
+- Motion detected in: 22 frames out of 3600
+- Tot thread time: 212.967099800 sec
+
+## Fast Flow
+- Tot FastFlow time: 174.579138100 sec
+
+## OpenMP
+- Grayscale time : 2.346147500 sec
+- GaussianFilter time : 28.800363600 sec
+- Comparison time : 5.228042800 sec
+- Motion detected in: 12 frames out of 3600
+- Tot OpenMp time: 210.962002200 sec
+----------------------------------------------------------------
+
+# Number of threads 16
+-------------------------------------------------------
+## Threads
+- Grayscale time threads: 2.002525400 sec
+- Gaussian threads : 27.899635200 sec
+- Comparison time : 6.231968200 sec
+- Motion detected in: 6 frames out of 3600
+- Tot thread time: 210.717287000 sec
+
+## Fast Flow
+- Tot FastFlow time: 174.579138100 sec
+
+## OpenMP
+- Grayscale time : 1.794098800 sec
+- GaussianFilter time : 28.500316500 sec
+- Comparison time : 4.995312000 sec
+- Motion detected in: 2 frames out of 3600
+- Tot OpenMp time: 209.874975500 sec
+----------------------------------------------------------------
+
+# Number of threads 32
+-------------------------------------------------------
+## Threads
+- Grayscale time threads: 1.916605400 sec
+- Gaussian threads : 27.690500400 sec
+- Comparison time : 5.749067300 sec
+- Motion detected in: 0 frames out of 3600
+- Tot thread time: 209.941954700 sec
+
+## Fast Flow
+- Tot FastFlow time: 174.579138100 sec
+
+## OpenMP
+- Grayscale time : 1.728349900 sec
+- GaussianFilter time : 25.953287900 sec
+- Comparison time : 4.720454500 sec
+- Motion detected in: 0 frames out of 3600
+- Tot OpenMp time: 206.987083100 sec
+----------------------------------------------------------------
