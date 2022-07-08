@@ -38,7 +38,7 @@ void ffParallel(vector<Mat> frames, int nOfWorkers);
 
 void openMpParallel(vector<Mat> frames, int nOfThreads);
 
-
+tuple<vector<double>, vector<double>, vector<double>, vector<double>> statistics(double Tseq, vector<double> Tpar, vector<int> n, bool verbose);
 
 const float PI = 3.14159265359;
 
@@ -62,8 +62,16 @@ int main(int argc, char** argv)
 	cout << endl;
 	seqFrames.clear();
 
-	for(int th = 4; th<=32; th*=2)
+	vector<double> Tpar_threads, Tpar_FF, Tpar_OMP;
+	vector<int> nParWor;
+
+	double Tseq = whole_time_taken + load_time_taken;
+
+	for(int th = 1; th<=32; th*=2)
 	{
+
+		nParWor.push_back(th);
+
 		cout<<"# Number of threads "<<th<<endl;
 		cout<<"-------------------------------------------------------"<<endl;
 			
@@ -82,7 +90,7 @@ int main(int argc, char** argv)
 		cout << "- Tot thread time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
 		cout << endl;
 		thFrames.clear();
-		
+		Tpar_threads.push_back(whole_time_taken + load_time_taken);
 		
 		cout<<"## Fast Flow"<<endl;
 		loadTime = chrono::high_resolution_clock::now();
@@ -98,7 +106,7 @@ int main(int argc, char** argv)
 		cout << "- Tot FastFlow time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
 		cout << endl;
 		ffFrames.clear();
-		
+		Tpar_FF.push_back(whole_time_taken + load_time_taken);
 
 		cout<<"## OpenMP"<<endl;
 		loadTime = chrono::high_resolution_clock::now();
@@ -113,9 +121,20 @@ int main(int argc, char** argv)
 		whole_time_taken = (chrono::duration_cast<chrono::nanoseconds>(ompTimeEnd - ompTime).count()) * 1e-9;
 		cout << "- Tot OpenMp time: " << fixed << whole_time_taken + load_time_taken << setprecision(9) << " sec" << endl;
 		ompFrames.clear();
-
+		Tpar_OMP.push_back(whole_time_taken + load_time_taken);
 		cout<<"----------------------------------------------------------------"<<endl<<endl;
+
+		if (th == 1)
+			th++;
 	}
+
+	cout << "Statistics for threads" << endl;
+	auto t_statististcs = statistics(Tseq, Tpar_threads, nParWor,true);
+	cout << "Statistics for FF" << endl;
+	auto FF_statististcs = statistics(Tseq, Tpar_FF, nParWor,true);
+	cout << "Statistics for OMP" << endl;
+	auto OMP_statististcs = statistics(Tseq, Tpar_OMP, nParWor,true);
+
 	return 0;
 }
 
@@ -571,3 +590,37 @@ void openMpParallel(vector<Mat> frames, int nOfThreads) {
 	cout << "- Motion detected in: " << totDifference << " frames out of " << frames.size() << endl;
 
 }
+
+
+tuple<vector<double>, vector<double>, vector<double>, vector<double>> statistics(double Tseq, vector<double> Tpar, vector<int> n, bool verbose) {
+
+	vector<double> speedup;
+	vector<double> scalab;
+	vector<double> efficency;
+	vector<double> idealTime;
+
+	//we assume that in the index 0 of Tpar we find the paralellization done with 1 thread
+
+	for (int i = 1; i < n.size(); i++) {
+		
+		speedup.at(i) = Tseq / Tpar.at(i);
+		scalab.at(i) = Tpar.at(0) / Tpar.at(i);
+		efficency.at(i) = speedup.at(i) / n.at(i);
+		idealTime.at(i) = Tseq / n.at(i);
+
+		if (verbose) {
+			cout << "## With " << n.at(i) << " threads:" << endl;
+			cout << "- Speedup is " << speedup.at(i) << endl;
+			cout << "- Scalb is " << scalab.at(i) << endl;
+			cout << "- Efficency is " << efficency.at(i) << endl;
+			cout << "- Ideal time is " << efficency.at(i) << endl;
+			cout << endl;
+		}
+
+	}
+
+
+
+	return make_tuple(speedup,scalab,efficency,idealTime);
+}
+
