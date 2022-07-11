@@ -725,11 +725,6 @@ Tot seq time: 249.742899334 sec
 -------------------------------------------------------
 ## Threads
 - Loading video Time: 103.713873498 sec
-
-Broadcast message from h.shabir@spm (somewhere) (Sat Jul  9 01:00:00 2022):
-
-system will be busy for 1 hr
-
 - Grayscale time threads: 10.830651129 sec
 - Gaussian threads : 136.392083931 sec
 - Comparison time : 7.021048235 sec
